@@ -190,7 +190,6 @@ Full rationale per decision is in [ARCHITECTURE.md §1–2](./ARCHITECTURE.md#1-
 
 | Decision | Trade-off accepted |
 |---|---|
-| **Persona consistency is a memory problem**, not a prompt problem — the companion's improvised opinions are stored and re-injected. | More moving parts than "just prompt it to stay in character," but survives long conversations where context-window drift would otherwise cause self-contradiction. |
 | **Relational-first storage** (SQLite, structured columns + an attached vector), not a vector DB. | Loses out-of-the-box ANN tooling; gains SQL inspectability, ACID transactions, zero infra, and a schema that reflects the real shape of the data (~90% structured facts). |
 | **Brute-force numpy cosine**, not an ANN index. | O(n) per query — fine to ~10k facts, not beyond. At the hundreds-of-facts scale here, an index is pure ceremony and adds a native-extension risk on Windows. Documented upgrade path: `sqlite-vec`. |
 | **Contradiction detection decomposed into narrow binary judgments** over ≤5 pre-fetched neighbours, not one big reasoning pass over all of memory. | Needs a retrieval step before the judgment step; in exchange the model does a well-scoped task it's reliably good at, instead of an open-ended one it isn't. |
