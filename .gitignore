@@ -1,0 +1,29 @@
+# Local secrets — never commit
+local_settings.py
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Local databases
+*.db
+
+# Demo walkthrough (not part of the code deliverable)
+WALKTHROUGH.md
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+
+# Scratch console captures from eval runs
+*.log
+
+# Claude Code tooling scaffolding (not part of the deliverable)
+.agents/
+.claude/
+skills-lock.json
