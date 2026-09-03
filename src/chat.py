@@ -223,6 +223,12 @@ def main() -> int:
     if seeded or decayed:
         console.print()
 
+    if existing == 0:
+        with console.status(f"[{color}]{name} is thinking…[/]", spinner="dots"):
+            opener = engine.start_conversation(conn, spine)
+        console.print(f"[bold {color}]{name.lower()}[/] [bold]›[/]")
+        console.print(Padding(Markdown(opener.reply), (0, 0, 1, 2)))
+
     while True:
         try:
             user_text = console.input("[bold green]you[/] [bold]›[/] ").strip()

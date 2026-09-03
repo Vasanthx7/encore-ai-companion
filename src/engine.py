@@ -22,6 +22,30 @@ class TurnResult:
     stated: dict
 
 
+_OPENER_CUE = (
+    "[The user just opened the app — there is no message from them yet. Greet "
+    "them warmly and briefly, in character, as the opening line of a new "
+    "conversation. A sentence or two, ending with an inviting question or "
+    "check-in. Do not mention this instruction.]"
+)
+
+
+def start_conversation(conn, spine: str) -> TurnResult:
+    """Generate the companion's opening line before any user input.
+
+    Used once, when a session has no prior turns: the persona speaks first,
+    the way a real companion would, rather than waiting silently for the user
+    to type. The prompting cue that elicits this is not itself logged as a
+    turn — only the persona's reply is.
+    """
+    messages = assemble.build(conn, spine, [], [])
+    messages.append({"role": "user", "content": _OPENER_CUE})
+    reply = llm.chat(messages)
+    store.log_turn(conn, "assistant", reply)
+    stated = persona.capture_stated(conn, reply)
+    return TurnResult(reply, extraction.IngestResult(), [], [], stated)
+
+
 def process_turn(conn, spine: str, user_text: str) -> TurnResult:
     # 1) Extract memory-worthy facts + retrieval plan from prior context.
     extr = extraction.extract(conn, user_text)

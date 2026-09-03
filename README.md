@@ -1,256 +1,166 @@
 # Encore — an OnceMore AI Companion
 
-For the full system design, data model, and pipeline diagrams, see
-**[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+Full design rationale, data model, and diagrams: **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+Eval findings: **[eval/REPORT.md](./eval/REPORT.md)**.
 
 ---
 
 ## 1. Setup
 
-### Requirements
-
-- **Python 3.11+**
-- **AWS Bedrock access** with Claude Sonnet 4.5 and Claude Haiku 4.5 enabled,
-  plus a Bedrock API key (bearer token). This is the **only** hard requirement.
-- **[Ollama](https://ollama.com)**, only if you choose to turn embeddings on —
-  **off by default**, so there's nothing to install here unless you opt in.
-  See [Embeddings are optional](#embeddings-are-optional) below for what
-  turning them on buys you.
-
-### Install
+**Requires:** Python 3.11+, and AWS Bedrock access with Claude Sonnet 4.5 +
+Haiku 4.5 enabled (a Bedrock API bearer token). That's the only hard
+dependency — embeddings are **off by default**.
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env      # fill in COMPANION_LLM_API_KEY
-```
-
-That's it — embeddings are **off by default**, so the app runs with no local
-model server. If you want the semantic-recall upgrade later, set
-`COMPANION_EMBEDDINGS_ENABLED=true` in `.env` and pull the model:
-
-```bash
-ollama pull nomic-embed-text
-ollama serve            # if not already running as a service
-```
-
-See [Embeddings are optional](#embeddings-are-optional) for exactly what
-turning this on changes.
-
-### Run
-
-```bash
 python -m src.chat
 ```
 
-On launch you pick a companion from the persona library (`personas/*.yaml`) —
-**Kai** (dry-witted ex-guitarist), **Nova** (bright wellness coach), **Sage**
-(quiet bookish librarian), or **Milo** (sarcastic game designer). Each has its
-own backstory, voice, and set of *falsifiable* opinions, so "stay in character"
-stays testable. Everything is persisted to SQLite and survives restarts.
-
-Each companion gets its **own memory store** (`companion_<name>.db`) —
-switching companions never leaks one's facts or opinions into another. Pin a
-single persona with `COMPANION_PERSONA=personas/nova.yaml`, or add your own by
-dropping a new YAML into `personas/` (copy `kai.yaml` as a template).
-
-Commands inside the chat loop:
+On launch you pick a companion from `personas/*.yaml` — **Kai** (ex-session
+guitarist), **Nova** (wellness coach), **Sage** (librarian), or **Milo**
+(sarcastic game designer). Each has its own SQLite store
+(`companion_<name>.db`), backstory, voice, and *falsifiable* opinions, so
+"stay in character" is testable, not vibes. Add a new companion by copying
+`kai.yaml` — no code change needed.
 
 | Command | Does |
 |---|---|
-| `/memory` | grouped view of active memory (user facts + persona opinions) and retired facts |
+| `/memory` | grouped view of active memory (user facts + persona opinions), plus retired facts |
 | `/dump` | raw view of stored turns and memories |
 | `/quit` | exit |
 
-A dim line after each turn shows what happened: `· +1 · ~1 retired · recalled 3`.
-
-### Embeddings are optional
-
-**Off by default** (`COMPANION_EMBEDDINGS_ENABLED=false`) — nothing in the
-product *requires* a local embedding model, so out of the box the companion
-runs end to end (chat, extraction, contradiction handling, persona
-consistency, decay) with **zero local model dependency**, talking only to
-Bedrock. This is the right default for a hosted deployment, a locked-down
-environment, or anyone who'd simply rather not run Ollama.
-
-**What works exactly the same either way** — because it doesn't depend on a
-vector at all:
-- extraction, entity canonicalization, and contradiction classification
-  (duplicate / supersede / refine / novel) — these are LLM judgments, not
-  vector math;
-- exact-entity recall — "what's my sister up to?" still reliably retrieves
-  the right memory via the structured (subject-match) retrieval leg;
-- persona consistency, the force-inject guard, and canon-contradiction
-  checks;
-- everything the deterministic checks in the eval suite verify (§4) — the
-  contradiction-handling numbers do not move.
-
-**What you gain by turning them on** (`COMPANION_EMBEDDINGS_ENABLED=true` +
-a running embeddings endpoint):
-- *semantic/paraphrase recall* — a query that doesn't share an exact entity
-  with a stored fact (e.g. "how's work going?" recalling a memory that never
-  says the word "work") gets a real similarity signal instead of falling back
-  to entity/subject matching only (`src/retrieval.py`, `src/reconcile.py`);
-- reconciliation's neighbour-gathering widens beyond same-subject facts, so a
-  supersede/refine on a *topic* the model didn't tag with a shared subject is
-  more likely to be found and reconciled.
-
-In short: the default trades fuzzy, meaning-based recall for zero
-infrastructure. Turn embeddings on when you want that recall back and are
-willing to run (or point at) an embeddings endpoint — it's fully swappable via
-`COMPANION_EMBED_BASE_URL` / `_API_KEY` / `_MODEL`, so `nomic-embed-text` via
-local Ollama is just the default, not a requirement:
+**Other entry points:**
 
 ```bash
-# in .env
-COMPANION_EMBEDDINGS_ENABLED=true
-
-# then, for the local-Ollama default:
-ollama pull nomic-embed-text
-ollama serve            # if not already running as a service
+python demo.py          # scripted 11-turn run through the real pipeline, no typing
+python -m eval.run       # runs the eval dataset, writes eval/results.md
 ```
 
-### Reproducible demo
+**Embeddings are opt-in** (`COMPANION_EMBEDDINGS_ENABLED=true` + `ollama pull
+nomic-embed-text`). Off by default, extraction, contradiction handling, and
+exact-entity recall all work unchanged — you only lose *paraphrase* recall
+("how's work going?" matching a memory that never says "work"). See
+[ARCHITECTURE.md §3](./ARCHITECTURE.md#3-tech-stack-settled) for the full
+tradeoff and the swap-in interface.
 
-```bash
-python demo.py
-```
-
-Runs a fixed ~11-turn conversation through the real pipeline (throwaway DB, no
-typing) and prints memory ops + replies, exercising every core behaviour:
-extraction, relevant recall, contradiction handling (a job switch and a
-breakup visibly *retire* the old facts), persona consistency, and long-range
-recall (early facts recalled 10 turns later).
-
-### Evaluation
-
-```bash
-python -m eval.run              # runs the 30- & 60-turn dataset, writes eval/results.md
-```
-
-See [§4](#4-evaluation) below and `eval/results.md` for the current numbers.
-
-### Config reference
-
-Every model call flows through one seam (`src/llm.py`), so models, credentials,
-and paths are set entirely by environment variable — no code changes. All
-tunable weights (retrieval scoring, decay half-lives, floors) live in
-`config.py`, read from env first so behaviour can be adjusted without touching
-logic.
-
-| Env var | Default | Purpose |
-|---|---|---|
-| `COMPANION_LLM_API_KEY` | _(none, required)_ | AWS Bedrock API key (bearer token) |
-| `COMPANION_AWS_REGION` | `us-east-1` | Bedrock region with Claude access |
-| `COMPANION_CHAT_MODEL` | `us.anthropic.claude-sonnet-4-5-20250929-v1:0` | conversation model |
-| `COMPANION_EXTRACT_MODEL` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | extraction model |
-| `COMPANION_JUDGE_MODEL` | _(= chat model)_ | contradiction judge + eval judge, overridable on its own |
-| `COMPANION_CHAT_MAX_TOKENS` | `2048` | output cap for chat replies |
-| `COMPANION_EXTRACT_MAX_TOKENS` | `2048` | output cap for structured extraction |
-| `COMPANION_EMBEDDINGS_ENABLED` | `false` | `true` turns on semantic recall (needs Ollama or another embeddings endpoint) |
-| `COMPANION_EMBED_BASE_URL` | `http://localhost:11434/v1` | embeddings endpoint (any OpenAI-compatible provider) |
-| `COMPANION_EMBED_API_KEY` | `ollama` | embeddings endpoint API key |
-| `COMPANION_EMBED_MODEL` | `nomic-embed-text` | embedding model |
-| `COMPANION_EMBED_DIM` | `768` | expected embedding vector size (match your model) |
-| `COMPANION_DB` | `./companion_<persona>.db` | SQLite path (per-persona by default) |
-| `COMPANION_PERSONA` | _(picker)_ | pin one persona file; unset shows the chooser |
-| `COMPANION_PERSONAS_DIR` | `./personas` | where selectable persona YAMLs live |
+Full env var reference (models, weights, paths) lives in `config.py`,
+read from env first so nothing requires a code change to tune.
 
 ---
 
-## 2. How it works
+## 2. The memory layer — the central decision
 
-Every user turn flows through one pipeline (`src/engine.py::process_turn`),
-shared by the CLI, the demo, and the eval harness:
+Everything downstream — retrieval, contradiction handling, persona
+consistency — depends on getting one call right: **what counts as a
+memory-worthy fact, and how is it pulled out of a raw message?** That's the
+decision this project spends the most effort on, and the one most worth
+scrutinizing.
 
-```
-extract facts + retrieval plan  →  store (reconcile)  →  retrieve  →  reply  →  capture persona opinions
-```
+**Current approach: structured extraction, not summarization.** Every user
+turn runs through one LLM pass (`src/extraction.py`) that returns discrete,
+self-contained facts rather than a rolling summary — each fact is a complete
+sentence naming its subject ("the user's sister Priya is in medical
+school," never a bare "Priya"), tagged with a `kind`
+(semantic/preference/episodic/state), a canonical `subject` entity,
+confidence, and salience. Pleasantries, questions, and anything the
+assistant said are explicitly excluded at extraction time — "where do I
+work?" yields zero memories, only a retrieval query. Facts are then
+reconciled against same-subject neighbours (duplicate / supersede / refine /
+novel) *before* retrieval runs, so a contradiction never gets read back
+stale in the same turn. Full mechanics: [ARCHITECTURE.md §8](./ARCHITECTURE.md#8-reconciliation-duplicate--supersede--refine--novel).
 
-- **Extraction & storage** — facts are extracted, entity-canonicalized, and
-  stored *before* retrieval runs, so a contradiction ("I broke up with Alex")
-  never gets read back stale in the same turn.
-- **Retrieval** — hybrid ranking (semantic + entity match + recency + salience)
-  feeds a lean, gated memory block into the prompt.
-- **Contradiction handling** — soft-supersession, refine, and decay; retired
-  facts stay in the DB for auditability, they're never deleted.
-- **Persona consistency** — canon rows (seeded from `persona.yaml`) plus the
-  persona's own improvised opinions, captured and re-injected so it can't
-  contradict itself 40 turns later.
-- **Evaluation harness** — scenario-driven metrics with deterministic DB checks
-  plus an LLM-as-judge for the subjective axes.
+This lines up with where the field has converged: atomic, self-contained
+facts (named entities, no pronouns, one claim per row) retrieve and
+reconcile more reliably than free-form summaries, and an explicit
+extract-then-reconcile pass is more dependable than trusting the model to
+decide unprompted what's worth saving via tool calls (the failure mode
+[Letta/MemGPT](https://vectorize.io/articles/mem0-vs-letta) explicitly
+accepts — if the model skips the save call, the memory is silently gone).
 
-Full pipeline diagram, data model, and module map: **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
+**Where this goes next — two honest gaps, not a roadmap:**
+
+- **Sequential reconciliation, not joint.** Each candidate fact in a turn is
+  reconciled against the store one at a time. [Mem0's](https://mem0.ai/blog/ai-memory-management-for-llms-and-agents)
+  newer single-pass extraction with cross-memory entity linking points at a
+  better version: reconcile a turn's facts against each other *and* the
+  store together, and link entities explicitly instead of leaning on
+  subject-string matching.
+- **No paging past a few hundred facts.** Retrieval is brute-force cosine
+  over an in-process table — correct and fast at this scale (§14), but with
+  no story for thousands of facts per user. The documented path there isn't
+  "swap in a vector DB," it's closer to Letta's virtual-context model: a
+  small actively-managed "hot" set backed by an unbounded cold archive.
+
+What was already tried here and abandoned (predicate canonicalization, a
+deterministic canon-opposition check, an ANN index) is in
+[ARCHITECTURE.md §15](./ARCHITECTURE.md#15-what-was-tried-and-abandoned) —
+each reversal has a reason, not just a result.
 
 ---
 
-## 3. Design decisions & trade-offs
+## 3. The rest of the pipeline
 
-The short version — the reasoning behind the choices that shape this codebase.
-Full rationale per decision is in [ARCHITECTURE.md §1–2](./ARCHITECTURE.md#1-design-principles-the-through-line).
+```
+extract facts + retrieval plan → store (reconcile) → retrieve → reply → capture persona opinions
+```
 
-| Decision | Trade-off accepted |
-|---|---|
-| **Persona consistency is a memory problem**, not a prompt problem — the companion's improvised opinions are stored and re-injected. | More moving parts than "just prompt it to stay in character," but survives long conversations where context-window drift would otherwise cause self-contradiction. |
-| **Relational-first storage** (SQLite, structured columns + an attached vector), not a vector DB. | Loses out-of-the-box ANN tooling; gains SQL inspectability, ACID transactions, zero infra, and a schema that reflects the real shape of the data (~90% structured facts). |
-| **Brute-force numpy cosine**, not an ANN index. | O(n) per query — fine to ~10k facts, not beyond. At the hundreds-of-facts scale here, an index is pure ceremony and adds a native-extension risk on Windows. Documented upgrade path: `sqlite-vec`. |
-| **Contradiction detection decomposed into narrow binary judgments** over ≤5 pre-fetched neighbours, not one big reasoning pass over all of memory. | Needs a retrieval step before the judgment step; in exchange the model does a well-scoped task it's reliably good at, instead of an open-ended one it isn't. |
-| **Store-before-retrieve** ordering in the turn pipeline. | Retrieval reads the DB *after* reconciliation, so a superseding fact is never retrieved stale in the same turn it arrives — at the cost of a strict pipeline order that can't be parallelized. |
-| **Working memory (verbatim) vs. long-term memory (retrieved facts)**, not "stuff all history into the context window." | A large context window would make this unnecessary token-wise, but the split is the point — it demonstrates *relevance*, and keeps the prompt inspectable/debuggable rather than opaque. |
-| **Two-tier model split** — Haiku 4.5 for high-frequency extraction, Sonnet 4.5 for chat/judging. | Extraction is a narrow, schema-constrained task that doesn't need the stronger (and pricier) model; keeps per-turn cost and latency down without touching quality where it matters. |
-| **Embeddings are optional and off by default**, with a documented fallback to entity/subject matching. | Loses fuzzy, meaning-based recall out of the box in exchange for zero local-model dependency; opting in trades that back for semantic recall once an embeddings endpoint is available. |
+- **Retrieval** — hybrid ranking (semantic + entity match + recency +
+  salience) feeds a lean, gated memory block into the prompt; nothing gets
+  dumped wholesale.
+- **Update & decay** — soft supersession only: a contradicted fact is
+  marked `superseded`, never deleted, so `/memory` can show *why* something
+  changed and mistakes stay recoverable.
+- **Persona consistency** — the persona's own improvised opinions
+  (`persona_stated`) are captured from its replies, checked against its
+  seeded canon (`persona.yaml`), and re-injected on later turns — so a
+  40-turn-old stance doesn't fall out of context and get contradicted.
+- **Working vs. long-term memory** — recent turns are kept verbatim; older
+  context lives only as retrieved facts. This is the point, not a
+  token-budget trick: it forces relevance-based recall over "paste the whole
+  transcript."
 
-**What was tried and reversed** (predicate canonicalization, an ANN index,
-a deterministic canon-opposition check, a blanket canon-skip rule) is recorded
-in [ARCHITECTURE.md §15](./ARCHITECTURE.md#15-what-was-tried-and-abandoned) —
-the reasoning behind each reversal matters more than the final value.
+Design-decision table (each one against the alternative it beat):
+[ARCHITECTURE.md §4](./ARCHITECTURE.md#4-decisions-and-why).
 
 ---
 
 ## 4. Evaluation
 
-Primary dataset: two hand-authored, hard, single-continuous-run conversations
-— 30 and 60 turns (`eval/dataset.py`) — designed to stress multi-step
-contradiction chains, cross-subject traps, jailbreak attempts, quantitative
-revert cycles, and leading questions, not just plant-then-probe recall. Two
-kinds of checks, kept deliberately separate:
+Primary dataset: two hand-authored, hard, single-continuous-run
+conversations — 30 and 60 turns (`eval/dataset.py`) — built to stress
+multi-step contradiction chains, cross-subject traps, jailbreak attempts,
+and leading questions, not just plant-then-probe recall.
 
-- **Deterministic (DB) checks** — query actual memory state (superseded vs.
-  active). Judge-independent, so these are the **authoritative** numbers and
-  carry the contradiction-handling verdict.
+Two kinds of checks, kept separate on purpose:
+- **Deterministic (DB) checks** — query actual memory state. Judge-independent,
+  and the authoritative numbers.
 - **Judged checks** — LLM-as-judge for recall quality, no-leak, persona
-  consistency, and tone. Indicative rather than authoritative.
+  consistency, tone. Indicative, not authoritative.
 
-**Latest run: 55/63 (87%)** — contradiction handling 93%, DB recall 87%, and
-no-leak/persona/tone all 100% (judged). Judged recall alone dropped to 50%,
-almost entirely traced to one finding below.
+**Latest run: 55/63 (87%)** — contradiction handling 93%, DB recall 87%,
+no-leak/persona/tone all 100% (judged); judged recall alone dropped to 50%,
+traced almost entirely to one finding.
 
-**Where it's weakest (the honest part) — three real findings from the latest
-run, not hypothetical caveats:**
+**Weakest point, honestly:** in the 60-turn run, the companion
+spontaneously invents a "boundary violation" premise the script never
+introduces, and refuses even benign recall questions for the rest of the
+conversation — a self-reinforcing pattern the `persona_stated` mechanism has
+no guard against once it starts. Two smaller findings (a hypothetical
+misattributed to the companion as its own opinion; a quantitative refine
+occasionally dropping the literal number) are also open. Full evidence and
+root-cause analysis: **[eval/REPORT.md](./eval/REPORT.md)**. Raw output,
+regenerated every run: `eval/results.md`.
 
-1. **A self-reinforcing refusal spiral (severity: high).** In the 60-turn
-   conversation, Kai spontaneously accuses the user of repeated "boundary
-   violations" — a premise nothing in the script introduces — and from
-   roughly the midpoint onward **refuses to answer even benign recall
-   questions** for the rest of the run. A parallel "you keep deflecting"
-   pattern appears independently in the 30-turn conversation. Likely
-   root cause: the `persona_stated` consistency mechanism (designed to hold
-   the persona *to its good opinions*) has no guard against reinforcing a
-   *bad* self-generated narrative once one starts. Not yet reproduced in a
-   follow-up isolated replay — flagged as the top open item, not closed.
-2. **`persona_stated` can misattribute the user's own hypothetical to the
-   companion (severity: medium).** A sarcasm/hypothetical distractor about
-   the *user's* imagined career got captured as three first-person opinions
-   *Kai* supposedly holds. The user-memory store was unaffected — this is a
-   narrower bug in the separate persona-opinion capture path.
-3. **Quantitative refines sometimes drop the concrete number (severity:
-   low).** Confirms an existing WARN from the adversarial suite — updating a
-   count ("two dogs" → "one dog") occasionally lands as prose that doesn't
-   restate the literal number, even when the underlying meaning is right.
+**Earlier eval passes** (`eval/legacy/`), superseded by the primary dataset
+above but kept for what each one surfaced:
 
-Full write-up with quoted evidence, root-cause analysis, and honest limits on
-what was and wasn't verified: **[`eval/REPORT.md`](./eval/REPORT.md)**. Raw
-numbers (regenerated on every run): `eval/results.md`. Harness design:
-[ARCHITECTURE.md §13](./ARCHITECTURE.md#13-evaluation-harness).
+| Pass | Result | What it found |
+|---|---|---|
+| [Smoke-test scenarios](./eval/legacy/results.md) — 3 short conversations | 15/16 (94%) | First working numbers; too small a set to trust on its own — the motivation for the harder 30/60-turn dataset. |
+| [Long-horizon run](./eval/legacy/results_long_horizon.md) — 1 continuous 150-turn conversation | 16/17 (94%) | Recall and contradiction handling hold at real distance (dozens of turns between a planted fact and its probe); a 200-turn run was scoped but not run. |
+| [Adversarial / red-team suite](./eval/legacy/adversarial_report.md) — 21 injection, jailbreak, and reconciliation-edge-case checks | 20 PASS, 1 WARN, 0 FAIL | All 4 jailbreak/injection vulnerabilities found against an earlier local 7B model are closed on Sonnet 4.5; the one WARN is a phrasing preference (quantitative updates phrased as a delta, not a restated total), not a bug. |
+| [LoCoMo adapter](./eval/legacy/results_locomo.md) — real external benchmark, 58 turns of human dialogue reframed as user↔companion | 10/25 (40%) | The most useful failure data: denser, multi-topic-per-turn dialogue exposes real extraction misses (secondary/third-party facts dropped) and a temporal-resolution gap (relative dates like "next month" never get resolved against a wall-clock timestamp) that this project's own sparser eval scenarios never surfaced. |
 
 ---
 
@@ -261,7 +171,7 @@ config.py         # all tunable knobs (models, weights, thresholds, half-lives)
 personas/         # selectable companions — one YAML each (kai, nova, sage, milo)
 src/
   llm.py          # Anthropic/Bedrock seam: chat() + structured()
-  embeddings.py   # Embedder seam (nomic default), L2-normalized vectors
+  embeddings.py   # embedder seam (nomic default), L2-normalized vectors
   store.py        # SQLite: schema, turn log, memory CRUD, lifecycle, decay
   entities.py     # canonical entity registry (subject reuse)
   extraction.py   # one structured pass: facts + retrieval plan; ingest+reconcile
@@ -278,19 +188,19 @@ eval/
   judge.py        # LLM-as-judge (Claude on Bedrock, swappable)
   results.md      # latest raw eval output (auto-generated every run)
   REPORT.md       # compiled report: findings, root-cause analysis, evidence
-  legacy/         # earlier eval passes: smoke-test scenarios, adversarial
-                   # suite, long-horizon (150/200-turn) runs, LoCoMo adapter
+  legacy/         # earlier eval passes: smoke tests, adversarial suite,
+                   # long-horizon (150/200-turn) runs, LoCoMo adapter
 ```
 
 ## 6. Known limitations
 
-- **A self-reinforcing refusal spiral can occur on long conversations** — the
-  most significant finding from the primary eval dataset (§4); not yet
-  reproduced on demand or fully root-caused. See `eval/REPORT.md` Finding 1.
-- Judged axes are indicative, not authoritative (see §4).
-- Episodic time-decay only auto-expires facts with an ISO-dated `temporal` field.
+- A self-reinforcing refusal spiral can occur on long conversations (§4) —
+  not yet reproduced on demand or fully root-caused.
+- Judged axes are indicative, not authoritative.
+- Episodic time-decay only auto-expires facts with an ISO-dated `temporal`
+  field.
 - Entity canonicalization is model-assisted, so alias drift is possible on
   ambiguous references.
-- Single-user, single-process by design — see
+- Single-user, single-process by design, sized for hundreds of facts — see
   [ARCHITECTURE.md §14](./ARCHITECTURE.md#14-known-limitations) for the full
-  list and where each one would need to change to scale past this scope.
+  list and what would need to change to scale past this scope.
