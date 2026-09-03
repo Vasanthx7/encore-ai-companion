@@ -14,11 +14,6 @@ venv/
 
 # Demo walkthrough (not part of the code deliverable)
 WALKTHROUGH.md
-*.mp4
-*.mov
-*.mkv
-*.webm
-*.avi
 
 # Scratch console captures from eval runs
 *.log
@@ -27,3 +22,6 @@ WALKTHROUGH.md
 .agents/
 .claude/
 skills-lock.json
+
+# Third-party benchmark data (fetched on demand, not ours to redistribute)
+eval/legacy/data/

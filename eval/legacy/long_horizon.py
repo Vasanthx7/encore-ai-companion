@@ -6,7 +6,7 @@ of turns. This tests whether recall, contradiction-handling, and persona
 consistency hold up over a turn count closer to what the spec asks for
 long turns rather than the short smoke-test scenarios.
 
-Run:  python -m eval.run_long_horizon
+Run:  python -m eval.legacy.run_long_horizon
 """
 
 from __future__ import annotations

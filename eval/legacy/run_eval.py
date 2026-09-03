@@ -5,7 +5,7 @@ engine.process_turn -> evaluate each turn's checks (DB-state checks are
 deterministic; reply checks use the LLM judge). Aggregate pass rates per category,
 list example failures, and write eval/results.md.
 
-Run:  python -m eval.run_eval
+Run:  python -m eval.legacy.run_eval
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 import config
 from eval import judge
-from eval.scenarios import CATEGORY, SCENARIOS
+from eval.legacy.scenarios import CATEGORY, SCENARIOS
 from src import engine, persona, store
 
 
@@ -191,7 +191,7 @@ def _write_results_md(by_cat, overall, failures) -> None:
         "- **Contradiction handling is the trustworthy metric** here — it's checked against "
         "actual DB state (superseded vs active), independent of any model judgement.")
     lines.append(
-        "- **Small synthetic set** (3 scenarios). Scales by adding to `eval/scenarios.py`.")
+        "- **Small synthetic set** (3 scenarios). Scales by adding to `eval/legacy/scenarios.py`.")
     with open(os.path.join(os.path.dirname(__file__), "results.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
 

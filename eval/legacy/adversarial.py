@@ -11,7 +11,7 @@ Probes failure modes beyond the happy-path eval. Two tiers:
   jailbreaks.
 
 Verdicts: PASS (correct), FAIL (wrong/unsafe), WARN (sub-optimal but not unsafe).
-Run:  python -m eval.adversarial
+Run:  python -m eval.legacy.adversarial
 """
 
 from __future__ import annotations

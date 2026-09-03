@@ -46,15 +46,16 @@ JUDGE_MODEL = os.getenv("COMPANION_JUDGE_MODEL", CHAT_MODEL)
 CHAT_MAX_TOKENS = int(os.getenv("COMPANION_CHAT_MAX_TOKENS", "2048"))
 EXTRACT_MAX_TOKENS = int(os.getenv("COMPANION_EXTRACT_MAX_TOKENS", "2048"))
 
-# Embeddings (same Ollama server by default). Optional: without a vector, retrieval
-# and reconciliation fall back to entity/subject matching instead of semantic
-# similarity — see src/embeddings.py and the fallback branches in
-# src/retrieval.py and src/reconcile.py. Turn off with COMPANION_EMBEDDINGS_ENABLED=false
-# for setups without a local embedding server (e.g. no Ollama), or point
-# COMPANION_EMBED_BASE_URL/COMPANION_EMBED_API_KEY/COMPANION_EMBED_MODEL at any other
-# OpenAI-embeddings-compatible provider (OpenAI, a hosted Ollama, etc.).
-EMBEDDINGS_ENABLED = os.getenv("COMPANION_EMBEDDINGS_ENABLED", "true").strip().lower() not in (
-    "false", "0", "no", "off",
+# Embeddings are OFF by default — no local model server is required to run
+# this project out of the box. Without a vector, retrieval and reconciliation
+# fall back to entity/subject matching instead of semantic similarity — see
+# src/embeddings.py and the fallback branches in src/retrieval.py and
+# src/reconcile.py. Opt in with COMPANION_EMBEDDINGS_ENABLED=true once Ollama
+# (or another OpenAI-embeddings-compatible endpoint) is available, and point
+# COMPANION_EMBED_BASE_URL/COMPANION_EMBED_API_KEY/COMPANION_EMBED_MODEL at it
+# if it isn't the local Ollama default.
+EMBEDDINGS_ENABLED = os.getenv("COMPANION_EMBEDDINGS_ENABLED", "false").strip().lower() in (
+    "true", "1", "yes", "on",
 )
 EMBED_BASE_URL = os.getenv("COMPANION_EMBED_BASE_URL", "http://localhost:11434/v1")
 EMBED_API_KEY = os.getenv("COMPANION_EMBED_API_KEY", "ollama")

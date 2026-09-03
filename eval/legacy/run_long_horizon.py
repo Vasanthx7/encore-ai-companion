@@ -5,7 +5,7 @@ engine.process_turn, deterministic DB checks + LLM-judged checks), just
 against much longer conversations so recall/contradiction/persona-consistency
 are exercised at realistic distance rather than a handful of turns.
 
-Run:  python -m eval.run_long_horizon
+Run:  python -m eval.legacy.run_long_horizon
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ import time
 from collections import defaultdict
 
 import config
-from eval.long_horizon import SCENARIOS
-from eval.run_eval import CheckResult, Totals, run_scenario
+from eval.legacy.long_horizon import SCENARIOS
+from eval.legacy.run_eval import CheckResult, Totals, run_scenario
 
 
 def main() -> int:
@@ -79,7 +79,7 @@ def _write_results_md(by_scenario, by_cat, overall, failures, timings) -> None:
         "Each scenario is a single continuous conversation (not 150/200 independent "
         "probes) with facts planted in the first few turns, contradictions and "
         "persona-pressure probes spread proportionally through the middle, and a "
-        "comprehensive recall/no-leak/persona probe at the end — see `eval/long_horizon.py`."
+        "comprehensive recall/no-leak/persona probe at the end — see `eval/legacy/long_horizon.py`."
     )
     lines.append("")
     lines.append("## Runtime")

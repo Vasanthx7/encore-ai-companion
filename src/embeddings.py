@@ -1,13 +1,17 @@
 """Embedder — text -> vector, behind a swappable, optional seam.
 
-Default: `nomic-embed-text` served by Ollama, reached through the OpenAI SDK's
-embeddings endpoint. An alternative such as bge-base via fastembed, or a hosted
-OpenAI-compatible provider, can be swapped in behind this same interface with no
-call-site changes (COMPANION_EMBED_BASE_URL / _API_KEY / _MODEL).
+Off by default (COMPANION_EMBEDDINGS_ENABLED=false) — no local model server is
+required to run this project out of the box. Opt in with
+COMPANION_EMBEDDINGS_ENABLED=true once a model is available. Default provider
+when enabled: `nomic-embed-text` served by Ollama, reached through the OpenAI
+SDK's embeddings endpoint. An alternative such as bge-base via fastembed, or a
+hosted OpenAI-compatible provider, can be swapped in behind this same
+interface with no call-site changes (COMPANION_EMBED_BASE_URL / _API_KEY /
+_MODEL).
 
-Embeddings are optional. When disabled (COMPANION_EMBEDDINGS_ENABLED=false) or
-unreachable, embed()/embed_one() return None vectors instead of raising, and
-callers (src/retrieval.py, src/reconcile.py) fall back to non-semantic matching.
+Whether disabled or enabled-but-unreachable, embed()/embed_one() return None
+vectors instead of raising, and callers (src/retrieval.py, src/reconcile.py)
+fall back to non-semantic matching.
 """
 
 from __future__ import annotations
