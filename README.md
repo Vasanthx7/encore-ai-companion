@@ -20,8 +20,7 @@ python -m src.chat
 On launch you pick a companion from `personas/*.yaml` — **Kai** (ex-session
 guitarist), **Nova** (wellness coach), **Sage** (librarian), or **Milo**
 (sarcastic game designer). Each has its own SQLite store
-(`companion_<name>.db`), backstory, voice, and *falsifiable* opinions, so
-"stay in character" is testable, not vibes. Add a new companion by copying
+(`companion_<name>.db`), backstory, voice, and *falsifiable* opinions is testable, not vibes. Add a new companion by copying
 `kai.yaml` — no code change needed.
 
 | Command | Does |
